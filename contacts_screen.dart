@@ -29,10 +29,9 @@ class _ContactsScreenState extends State<ContactsScreen> {
     try {
       final userId = supabase.auth.currentUser?.id;
       final data = await supabase
-          .from('contacts')
-          .select()
-          .eq('user_id', userId ?? '')
-          .order('id');
+    .from('contacts')
+    .select()
+    .order('id');
       setState(() => _contacts = List<Map<String, dynamic>>.from(data));
     } catch (e) {
       _showError('Failed to load contacts');
@@ -45,10 +44,9 @@ class _ContactsScreenState extends State<ContactsScreen> {
     try {
       final userId = supabase.auth.currentUser?.id;
       await supabase.from('contacts').insert({
-        'name': name,
-        'number': number,
-        'user_id': userId,
-      });
+  'name': name,
+  'number': number,
+});
       await _fetchContacts();
     } catch (e) {
       _showError('Failed to add contact');
