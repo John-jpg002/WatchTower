@@ -17,7 +17,7 @@ class _KeypadScreenState extends State<KeypadScreen> {
   String _input = '';
   final _arduino = ArduinoService();
   String _savedNumber = '';
-  String _lcdText = 'NUMBER SAVE!\n+63955213232';
+  String _lcdText = 'NO NUMBER SAVED';
 
   @override
   void initState() {
