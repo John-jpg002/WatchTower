@@ -12,8 +12,8 @@ class ArduinoService {
   // ─── State ─────────────────────────────────────────────────────────────────
   bool _ledStatus = false;
   bool _buzzerStatus = false;
-  String _lcdText = 'NUMBER SAVE!\n+63955213232';
-  String _savedNumber = '+63 433 324 9543';
+  String _lcdText = 'NO NUMBER SAVED';
+  String _savedNumber = '';
 
   final StreamController<Map<String, dynamic>> _dataController =
       StreamController<Map<String, dynamic>>.broadcast();
