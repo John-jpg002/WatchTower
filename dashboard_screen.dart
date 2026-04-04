@@ -17,8 +17,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   final _arduino = ArduinoService();
   bool _led = false;
   bool _buzzer = false;
-  String _lcdText = 'NUMBER SAVE!\n+63955213232';
-
+  String _lcdText = 'NO NUMBER SAVED';
   @override
   void initState() {
     super.initState();
@@ -52,7 +51,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               children: [
                 _statCard('🔴', 'Monitor\nEvents: 0'),
                 const SizedBox(width: 8),
-                _statCard('📱', 'Saved\nContact: 1'),
+                _statCard('📱', 'Saved\nContact: 0'),
                 const SizedBox(width: 8),
                 _statCard('📡', 'Device\nOnline: 3'),
               ],
