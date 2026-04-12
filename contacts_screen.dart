@@ -1,7 +1,5 @@
 // lib/screens/contacts_screen.dart
-
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import '../main.dart';
 import '../utils/constants.dart';
 import '../widgets/app_drawer.dart';
@@ -17,6 +15,7 @@ class ContactsScreen extends StatefulWidget {
 class _ContactsScreenState extends State<ContactsScreen> {
   List<Map<String, dynamic>> _contacts = [];
   bool _loading = true;
+  String _errorMsg = '';
 
   @override
   void initState() {
@@ -25,16 +24,18 @@ class _ContactsScreenState extends State<ContactsScreen> {
   }
 
   Future<void> _fetchContacts() async {
-    setState(() => _loading = true);
+    setState(() {
+      _loading = true;
+      _errorMsg = '';
+    });
     try {
-      final userId = supabase.auth.currentUser?.id;
       final data = await supabase
-    .from('contacts')
-    .select()
-    .order('id');
+          .from('contacts')
+          .select('id, name, number')
+          .order('id');
       setState(() => _contacts = List<Map<String, dynamic>>.from(data));
     } catch (e) {
-      _showError('Failed to load contacts');
+      setState(() => _errorMsg = e.toString());
     } finally {
       setState(() => _loading = false);
     }
@@ -44,12 +45,24 @@ class _ContactsScreenState extends State<ContactsScreen> {
     try {
       final userId = supabase.auth.currentUser?.id;
       await supabase.from('contacts').insert({
-  'name': name,
-  'number': number,
-});
+        'name': name,
+        'number': number,
+        'user_id': userId,
+      });
       await _fetchContacts();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Contact saved!'),
+          backgroundColor: AppColors.alertGreen,
+        ));
+      }
     } catch (e) {
-      _showError('Failed to add contact');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Save error: ${e.toString()}'),
+          backgroundColor: AppColors.alertRed,
+        ));
+      }
     }
   }
 
@@ -60,7 +73,12 @@ class _ContactsScreenState extends State<ContactsScreen> {
           .update({'name': name, 'number': number}).eq('id', id);
       await _fetchContacts();
     } catch (e) {
-      _showError('Failed to update contact');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Edit error: ${e.toString()}'),
+          backgroundColor: AppColors.alertRed,
+        ));
+      }
     }
   }
 
@@ -69,14 +87,13 @@ class _ContactsScreenState extends State<ContactsScreen> {
       await supabase.from('contacts').delete().eq('id', id);
       await _fetchContacts();
     } catch (e) {
-      _showError('Failed to delete contact');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Delete error: ${e.toString()}'),
+          backgroundColor: AppColors.alertRed,
+        ));
+      }
     }
-  }
-
-  void _showError(String msg) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(msg), backgroundColor: AppColors.alertRed),
-    );
   }
 
   @override
@@ -99,26 +116,46 @@ class _ContactsScreenState extends State<ContactsScreen> {
                   child: const Icon(Icons.add_circle,
                       color: AppColors.cyan, size: 22),
                 ),
+                const Spacer(),
+                IconButton(
+                  icon: const Icon(Icons.refresh, color: AppColors.cyan),
+                  onPressed: _fetchContacts,
+                ),
               ],
             ),
             const SizedBox(height: 16),
-            _loading
-                ? const Center(
-                    child: CircularProgressIndicator(color: AppColors.cyan))
-                : _contacts.isEmpty
-                    ? const Center(
-                        child: Text('No contacts yet.',
-                            style:
-                                TextStyle(color: AppColors.textSecondary)))
-                    : Expanded(
-                        child: ListView.builder(
-                          itemCount: _contacts.length,
-                          itemBuilder: (context, i) {
-                            final c = _contacts[i];
-                            return _contactCard(c);
-                          },
-                        ),
-                      ),
+            if (_errorMsg.isNotEmpty)
+              Container(
+                width: double.infinity,
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.alertRed.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: AppColors.alertRed),
+                ),
+                child: Text('Error: $_errorMsg',
+                    style: const TextStyle(
+                        color: AppColors.alertRed, fontSize: 12)),
+              ),
+            if (_loading)
+              const Center(
+                  child:
+                      CircularProgressIndicator(color: AppColors.cyan))
+            else if (_contacts.isEmpty && _errorMsg.isEmpty)
+              const Center(
+                child: Text('No contacts yet. Tap + to add one.',
+                    style:
+                        TextStyle(color: AppColors.textSecondary)),
+              )
+            else
+              Expanded(
+                child: ListView.builder(
+                  itemCount: _contacts.length,
+                  itemBuilder: (context, i) =>
+                      _contactCard(_contacts[i]),
+                ),
+              ),
           ],
         ),
       ),
@@ -128,7 +165,8 @@ class _ContactsScreenState extends State<ContactsScreen> {
   Widget _contactCard(Map<String, dynamic> contact) {
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      padding:
+          const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
         color: AppColors.cardMid,
         borderRadius: BorderRadius.circular(12),
@@ -145,26 +183,28 @@ class _ContactsScreenState extends State<ContactsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(contact['name'],
+                Text(contact['name'] ?? '',
                     style: const TextStyle(
                         color: AppColors.textPrimary,
                         fontWeight: FontWeight.w600)),
-                Text(contact['number'],
+                Text(contact['number'] ?? '',
                     style: const TextStyle(
-                        color: AppColors.textSecondary, fontSize: 12)),
+                        color: AppColors.textSecondary,
+                        fontSize: 12)),
               ],
             ),
           ),
           IconButton(
             icon: const Icon(Icons.edit, color: Colors.amber, size: 18),
-            onPressed: () => _showContactDialog(existing: contact),
+            onPressed: () =>
+                _showContactDialog(existing: contact),
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(),
           ),
           const SizedBox(width: 8),
           IconButton(
-            icon:
-                const Icon(Icons.delete, color: AppColors.alertRed, size: 18),
+            icon: const Icon(Icons.delete,
+                color: AppColors.alertRed, size: 18),
             onPressed: () => _deleteContact(contact['id']),
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(),
@@ -183,8 +223,10 @@ class _ContactsScreenState extends State<ContactsScreen> {
       context: context,
       builder: (_) => AlertDialog(
         backgroundColor: AppColors.cardDark,
-        title: Text(existing == null ? 'Add Contact' : 'Edit Contact',
-            style: const TextStyle(color: AppColors.textPrimary)),
+        title: Text(
+            existing == null ? 'Add Contact' : 'Edit Contact',
+            style:
+                const TextStyle(color: AppColors.textPrimary)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -198,18 +240,22 @@ class _ContactsScreenState extends State<ContactsScreen> {
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text('Cancel',
-                style: TextStyle(color: AppColors.textSecondary)),
+                style:
+                    TextStyle(color: AppColors.textSecondary)),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.cyan,
                 foregroundColor: AppColors.background),
             onPressed: () {
+              final name = nameCtrl.text.trim();
+              final number = numCtrl.text.trim();
+              if (name.isEmpty || number.isEmpty) return;
               Navigator.pop(context);
               if (existing == null) {
-                _addContact(nameCtrl.text, numCtrl.text);
+                _addContact(name, number);
               } else {
-                _editContact(existing['id'], nameCtrl.text, numCtrl.text);
+                _editContact(existing['id'], name, number);
               }
             },
             child: const Text('Save'),
@@ -227,7 +273,8 @@ class _ContactsScreenState extends State<ContactsScreen> {
       style: const TextStyle(color: AppColors.textPrimary),
       decoration: InputDecoration(
         hintText: hint,
-        hintStyle: const TextStyle(color: AppColors.textSecondary),
+        hintStyle:
+            const TextStyle(color: AppColors.textSecondary),
         filled: true,
         fillColor: AppColors.cardMid,
         border: OutlineInputBorder(
