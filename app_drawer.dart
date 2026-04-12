@@ -1,5 +1,4 @@
 // lib/widgets/app_drawer.dart
-
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../main.dart';
@@ -7,7 +6,6 @@ import '../utils/constants.dart';
 import '../screens/dashboard_screen.dart';
 import '../screens/alert_log_screen.dart';
 import '../screens/contacts_screen.dart';
-import '../screens/keypad_screen.dart';
 import '../screens/settings_screen.dart';
 import '../screens/login_screen.dart';
 
@@ -23,6 +21,7 @@ class AppDrawer extends StatelessWidget {
       backgroundColor: AppColors.cardDark,
       child: Column(
         children: [
+          // ── Header ──────────────────────────────────────
           Container(
             color: AppColors.cyanDark,
             padding: const EdgeInsets.fromLTRB(16, 50, 16, 20),
@@ -42,21 +41,27 @@ class AppDrawer extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('WATCHTOWER',
-                          style: TextStyle(
-                              color: AppColors.cyan,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 14)),
-                      Text(email,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                              color: AppColors.textSecondary, fontSize: 10)),
+                      const Text(
+                        'WATCHTOWER',
+                        style: TextStyle(
+                            color: AppColors.cyan,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14),
+                      ),
+                      Text(
+                        email,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                            color: AppColors.textSecondary, fontSize: 10),
+                      ),
                     ],
                   ),
                 ),
               ],
             ),
           ),
+
+          // ── Nav items ────────────────────────────────────
           Expanded(
             child: ListView(
               padding: const EdgeInsets.symmetric(vertical: 8),
@@ -66,17 +71,19 @@ class AppDrawer extends StatelessWidget {
                     const DashboardScreen()),
                 _drawerItem(context, Icons.notifications_active, 'Alert Log',
                     const AlertLogScreen()),
+
                 _sectionHeader('MANAGE'),
                 _drawerItem(context, Icons.contacts, 'Contacts',
                     const ContactsScreen()),
-                _drawerItem(context, Icons.dialpad, 'Keypad',
-                    const KeypadScreen()),
+
                 _sectionHeader('SYSTEM'),
                 _drawerItem(context, Icons.settings, 'Settings',
                     const SettingsScreen()),
               ],
             ),
           ),
+
+          // ── Logout ───────────────────────────────────────
           Padding(
             padding: const EdgeInsets.all(16),
             child: SizedBox(
@@ -92,8 +99,7 @@ class AppDrawer extends StatelessWidget {
                   await supabase.auth.signOut();
                   if (context.mounted) {
                     Navigator.of(context).pushAndRemoveUntil(
-                      MaterialPageRoute(
-                          builder: (_) => const LoginScreen()),
+                      MaterialPageRoute(builder: (_) => const LoginScreen()),
                       (_) => false,
                     );
                   }
@@ -110,12 +116,14 @@ class AppDrawer extends StatelessWidget {
   Widget _sectionHeader(String title) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
-      child: Text(title,
-          style: const TextStyle(
-              color: AppColors.textSecondary,
-              fontSize: 10,
-              fontWeight: FontWeight.bold,
-              letterSpacing: 1.2)),
+      child: Text(
+        title,
+        style: const TextStyle(
+            color: AppColors.textSecondary,
+            fontSize: 10,
+            fontWeight: FontWeight.bold,
+            letterSpacing: 1.2),
+      ),
     );
   }
 
@@ -124,8 +132,8 @@ class AppDrawer extends StatelessWidget {
     return ListTile(
       leading: Icon(icon, color: AppColors.cyan, size: 20),
       title: Text(label,
-          style:
-              const TextStyle(color: AppColors.textPrimary, fontSize: 14)),
+          style: const TextStyle(
+              color: AppColors.textPrimary, fontSize: 14)),
       onTap: () {
         Navigator.pop(context);
         Navigator.pushReplacement(
