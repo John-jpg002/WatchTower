@@ -1,5 +1,4 @@
 // lib/utils/constants.dart
-
 import 'package:flutter/material.dart';
 
 class AppColors {
@@ -12,6 +11,7 @@ class AppColors {
   static const headerBlue = Color(0xFF7BA7C4);
   static const alertRed = Color(0xFFE53E3E);
   static const alertGreen = Color(0xFF38A169);
+  static const alertOrange = Color(0xFFDD6B20);
   static const textPrimary = Color(0xFFEDF2F7);
   static const textSecondary = Color(0xFF718096);
   static const lcdGreen = Color(0xFF00FF41);
@@ -34,7 +34,6 @@ class AppTextStyles {
   );
 }
 
-// Alert log mock data
 class MockData {
   static final List<Map<String, dynamic>> alerts = [
     {
