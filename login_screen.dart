@@ -1,5 +1,4 @@
 // lib/screens/login_screen.dart
-
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../main.dart';
@@ -49,10 +48,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   void _showError(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(msg),
-        backgroundColor: AppColors.alertRed,
-      ),
+      SnackBar(content: Text(msg), backgroundColor: AppColors.alertRed),
     );
   }
 
@@ -88,8 +84,8 @@ class _LoginScreenState extends State<LoginScreen> {
                         fontWeight: FontWeight.bold,
                         letterSpacing: 4)),
                 const Text('APP',
-                    style:
-                        TextStyle(color: AppColors.textSecondary, fontSize: 10)),
+                    style: TextStyle(
+                        color: AppColors.textSecondary, fontSize: 10)),
                 const SizedBox(height: 24),
                 const Align(
                   alignment: Alignment.centerLeft,
