@@ -1,5 +1,4 @@
 // lib/screens/settings_screen.dart
-
 import 'package:flutter/material.dart';
 import '../utils/constants.dart';
 import '../widgets/app_drawer.dart';
@@ -23,22 +22,25 @@ class SettingsScreen extends StatelessWidget {
           children: [
             const Text('Settings', style: AppTextStyles.heading),
             const SizedBox(height: 20),
-            _settingsTile(context, Icons.person, 'Profile', const ProfileScreen()),
+            _settingsTile(
+                context, Icons.person, 'Profile', const ProfileScreen()),
             const SizedBox(height: 10),
-            _settingsTile(context, Icons.info, 'About Us', const AboutScreen()),
+            _settingsTile(
+                context, Icons.info, 'About Us', const AboutScreen()),
           ],
         ),
       ),
     );
   }
 
-  Widget _settingsTile(
-      BuildContext context, IconData icon, String label, Widget screen) {
+  Widget _settingsTile(BuildContext context, IconData icon, String label,
+      Widget screen) {
     return GestureDetector(
-      onTap: () => Navigator.push(
-          context, MaterialPageRoute(builder: (_) => screen)),
+      onTap: () =>
+          Navigator.push(context, MaterialPageRoute(builder: (_) => screen)),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        padding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
           color: AppColors.cardMid,
           borderRadius: BorderRadius.circular(12),
@@ -50,7 +52,8 @@ class SettingsScreen extends StatelessWidget {
             Text(label,
                 style: const TextStyle(color: AppColors.textPrimary)),
             const Spacer(),
-            const Icon(Icons.chevron_right, color: AppColors.textSecondary),
+            const Icon(Icons.chevron_right,
+                color: AppColors.textSecondary),
           ],
         ),
       ),
