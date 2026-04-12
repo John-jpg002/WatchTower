@@ -1,5 +1,4 @@
 // lib/screens/about_screen.dart
-
 import 'package:flutter/material.dart';
 import '../utils/constants.dart';
 import '../widgets/app_drawer.dart';
@@ -27,23 +26,37 @@ class AboutScreen extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 24),
+            // ── Row 1: Founder + Co-Founder ─────────────────
             Row(
               children: [
                 _teamCard(
                   initials: 'KQ',
-                  name: 'Keanne Emmarcs \nQuicoy',
+                  name: 'Keanne Emmarcs\nQuicoy',
                   role: 'Founder',
-                  description:
-                      'Maker of Watchtower',
+                  description: 'Maker of Watchtower',
                 ),
                 const SizedBox(width: 12),
                 _teamCard(
-                  initials: 'Ja',
+                  initials: 'JA',
                   name: 'Jude\nAndres',
                   role: 'Co-Founder',
-                  description:
-                      'Maker of Watchtower',
+                  description: 'Maker of Watchtower',
                 ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            // ── Row 2: Ezekiel (centered) ────────────────────
+            Row(
+              children: [
+                _teamCard(
+                  initials: 'EC',
+                  name: 'Ezekiel\nCarag',
+                  role: 'Co-Founder',
+                  description: 'Maker of Watchtower',
+                ),
+                // Empty expanded to keep card same width as above
+                const SizedBox(width: 12),
+                const Expanded(child: SizedBox()),
               ],
             ),
           ],
@@ -70,27 +83,41 @@ class AboutScreen extends StatelessWidget {
             CircleAvatar(
               radius: 36,
               backgroundColor: AppColors.cyanDark,
-              child: Text(initials,
-                  style: const TextStyle(
-                      color: AppColors.cyan,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 18)),
+              child: Text(
+                initials,
+                style: const TextStyle(
+                  color: AppColors.cyan,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 18,
+                ),
+              ),
             ),
             const SizedBox(height: 10),
-            Text(name,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                    color: AppColors.textPrimary,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 13)),
-            Text(role,
-                style: const TextStyle(
-                    color: AppColors.cyan, fontSize: 11)),
+            Text(
+              name,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: AppColors.textPrimary,
+                fontWeight: FontWeight.bold,
+                fontSize: 13,
+              ),
+            ),
+            Text(
+              role,
+              style: const TextStyle(
+                color: AppColors.cyan,
+                fontSize: 11,
+              ),
+            ),
             const SizedBox(height: 6),
-            Text(description,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                    color: AppColors.textSecondary, fontSize: 10)),
+            Text(
+              description,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: AppColors.textSecondary,
+                fontSize: 10,
+              ),
+            ),
           ],
         ),
       ),
