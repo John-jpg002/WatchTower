@@ -1,5 +1,5 @@
 // lib/screens/keypad_screen.dart
-
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../utils/constants.dart';
 import '../services/arduino_service.dart';
@@ -17,26 +17,36 @@ class _KeypadScreenState extends State<KeypadScreen> {
   String _input = '';
   final _arduino = ArduinoService();
   String _savedNumber = '';
-  String _lcdText = 'NO NUMBER SAVED';
+  // Shows "SYSTEM READY" until the device_state stream delivers a value
+  String _lcdText = 'SYSTEM READY';
+  StreamSubscription<Map<String, dynamic>>? _dataSubscription;
 
   @override
   void initState() {
     super.initState();
+    _arduino.startKeypadListening();
+
+    // Seed from cached values (already loaded by startKeypadListening)
     _savedNumber = _arduino.savedNumber;
-    _lcdText = _arduino.lcdText;
-    _arduino.dataStream.listen((data) {
+    // Only override the default if the service already has a real value
+    if (_arduino.lcdText.isNotEmpty) {
+      _lcdText = _arduino.lcdText;
+    }
+
+    // Keep LCD display in sync with live device_state changes
+    _dataSubscription = _arduino.dataStream.listen((data) {
       if (mounted) {
         setState(() {
           _savedNumber = data['savedNumber'] ?? _savedNumber;
-          _lcdText = data['lcd'] ?? _lcdText;
+          // Only update LCD if the incoming value is non-empty
+          final incoming = data['lcd'] ?? '';
+          if (incoming.isNotEmpty) _lcdText = incoming;
         });
       }
     });
   }
 
-  void _press(String val) {
-    setState(() => _input += val);
-  }
+  void _press(String val) => setState(() => _input += val);
 
   void _delete() {
     if (_input.isNotEmpty) {
@@ -50,8 +60,21 @@ class _KeypadScreenState extends State<KeypadScreen> {
       setState(() {
         _savedNumber = _input;
         _input = '';
+        _lcdText = 'NUMBER SAVED';
       });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Number saved successfully!'),
+          backgroundColor: AppColors.alertGreen,
+        ));
+      }
     }
+  }
+
+  @override
+  void dispose() {
+    _dataSubscription?.cancel();
+    super.dispose();
   }
 
   @override
@@ -68,7 +91,7 @@ class _KeypadScreenState extends State<KeypadScreen> {
             const Text('Keypad', style: AppTextStyles.heading),
             const SizedBox(height: 16),
 
-            // Enter number label
+            // ── Input label ───────────────────────────────
             const Text('ENTER PHONE NUMBER',
                 style: TextStyle(
                     color: AppColors.textSecondary,
@@ -76,11 +99,11 @@ class _KeypadScreenState extends State<KeypadScreen> {
                     letterSpacing: 1)),
             const SizedBox(height: 8),
 
-            // Display field
+            // ── Display field ─────────────────────────────
             Container(
               width: double.infinity,
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 16, vertical: 14),
               decoration: BoxDecoration(
                 color: AppColors.cardMid,
                 borderRadius: BorderRadius.circular(10),
@@ -96,11 +119,11 @@ class _KeypadScreenState extends State<KeypadScreen> {
             ),
             const SizedBox(height: 16),
 
-            // Keypad grid
+            // ── Keypad grid ───────────────────────────────
             _buildKeypad(),
             const SizedBox(height: 20),
 
-            // LCD Display
+            // ── LCD Display ───────────────────────────────
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(12),
@@ -114,15 +137,17 @@ class _KeypadScreenState extends State<KeypadScreen> {
                   Row(
                     children: [
                       Container(
-                          width: 8,
-                          height: 8,
-                          decoration: const BoxDecoration(
-                              color: AppColors.alertGreen,
-                              shape: BoxShape.circle)),
+                        width: 8,
+                        height: 8,
+                        decoration: const BoxDecoration(
+                            color: AppColors.alertGreen,
+                            shape: BoxShape.circle),
+                      ),
                       const SizedBox(width: 6),
                       const Text('LCD Display output',
                           style: TextStyle(
-                              color: AppColors.textSecondary, fontSize: 11)),
+                              color: AppColors.textSecondary,
+                              fontSize: 11)),
                     ],
                   ),
                   const SizedBox(height: 8),
@@ -149,23 +174,36 @@ class _KeypadScreenState extends State<KeypadScreen> {
             ),
             const SizedBox(height: 16),
 
-            // Currently saved number
-            const Text('CURRENTLY SAVE NUMBER',
+            // ── Currently saved number ────────────────────
+            const Text('CURRENTLY SAVED NUMBER',
                 style: TextStyle(
                     color: AppColors.textSecondary,
                     fontSize: 11,
                     letterSpacing: 1)),
             const SizedBox(height: 8),
             Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 14, vertical: 12),
               decoration: BoxDecoration(
                 color: AppColors.cardMid,
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(color: AppColors.cyanDark),
               ),
-              child: Text(_savedNumber,
-                  style: const TextStyle(color: AppColors.textPrimary)),
+              child: Row(
+                children: [
+                  const Icon(Icons.phone,
+                      color: AppColors.cyan, size: 16),
+                  const SizedBox(width: 8),
+                  Text(
+                    _savedNumber.isEmpty ? 'None saved yet' : _savedNumber,
+                    style: TextStyle(
+                      color: _savedNumber.isEmpty
+                          ? AppColors.textSecondary
+                          : AppColors.textPrimary,
+                    ),
+                  ),
+                ],
+              ),
             ),
             const SizedBox(height: 12),
 
@@ -176,7 +214,8 @@ class _KeypadScreenState extends State<KeypadScreen> {
                     style: OutlinedButton.styleFrom(
                       side: const BorderSide(color: AppColors.cyanDark),
                       foregroundColor: AppColors.textPrimary,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      padding:
+                          const EdgeInsets.symmetric(vertical: 12),
                     ),
                     onPressed: () {},
                     child: const Text('View Saved'),
@@ -188,7 +227,8 @@ class _KeypadScreenState extends State<KeypadScreen> {
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.pinkAccent,
                       foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      padding:
+                          const EdgeInsets.symmetric(vertical: 12),
                     ),
                     onPressed: _save,
                     child: const Text('Replace'),
@@ -211,16 +251,20 @@ class _KeypadScreenState extends State<KeypadScreen> {
     return Column(
       children: [
         ...rows.map((row) => Padding(
-          padding: const EdgeInsets.only(bottom: 10),
-          child: Row(
-            children: row.map((d) => Expanded(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                child: _keyButton(d, onTap: () => _press(d)),
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Row(
+                children: row
+                    .map((d) => Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 4),
+                            child: _keyButton(d,
+                                onTap: () => _press(d)),
+                          ),
+                        ))
+                    .toList(),
               ),
-            )).toList(),
-          ),
-        )),
+            )),
         Row(
           children: [
             Expanded(
