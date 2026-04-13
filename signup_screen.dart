@@ -1,5 +1,4 @@
 // lib/screens/signup_screen.dart
-
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../main.dart';
@@ -37,7 +36,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
       _showError('Password must be at least 6 characters');
       return;
     }
-
     setState(() => _loading = true);
     try {
       await supabase.auth.signUp(
@@ -66,8 +64,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
   void _showError(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-          content: Text(msg), backgroundColor: AppColors.alertRed),
+      SnackBar(content: Text(msg), backgroundColor: AppColors.alertRed),
     );
   }
 
@@ -112,9 +109,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
                         fontSize: 18,
                         fontWeight: FontWeight.bold)),
                 const Text(
-                    "Let's help you set up your account, it won't take long.",
-                    style: TextStyle(
-                        color: AppColors.textSecondary, fontSize: 11)),
+                  "Let's help you set up your account, it won't take long.",
+                  style: TextStyle(color: AppColors.textSecondary, fontSize: 11),
+                ),
                 const SizedBox(height: 16),
                 _field('Fullname', _fullnameCtrl),
                 const SizedBox(height: 10),
@@ -146,16 +143,14 @@ class _SignUpScreenState extends State<SignUpScreen> {
                             child: CircularProgressIndicator(
                                 strokeWidth: 2, color: Colors.white))
                         : const Text('Sign Up',
-                            style:
-                                TextStyle(fontWeight: FontWeight.bold)),
+                            style: TextStyle(fontWeight: FontWeight.bold)),
                   ),
                 ),
                 const SizedBox(height: 8),
                 GestureDetector(
                   onTap: () => Navigator.pop(context),
                   child: const Text('Already have an account? Login',
-                      style:
-                          TextStyle(color: AppColors.cyan, fontSize: 12)),
+                      style: TextStyle(color: AppColors.cyan, fontSize: 12)),
                 ),
               ],
             ),
