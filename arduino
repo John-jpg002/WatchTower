@@ -1,0 +1,564 @@
+
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+#include <WiFi.h>
+#include <HTTPClient.h>
+#include <ArduinoJson.h>
+#include <NTPClient.h>
+#include <WiFiUdp.h>
+#include <time.h>
+
+// WiFi
+const char* WIFI_SSID     = "PLDTHOMEFIBRF9Vg3";
+const char* WIFI_PASSWORD = "PLDTWIFI8AhVn";
+
+// Supabase
+const char* SUPABASE_URL = "https://afjmndbunsqpaphikjqg.supabase.co";
+const char* SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFmam1uZGJ1bnNxcGFwaGlranFnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUzMDg0MjIsImV4cCI6MjA5MDg4NDQyMn0.yeVLn_Xm9p7zNm2zq4CsFESFyRbZxfXLEuopRVz_9Mk";
+
+// Pins
+#define PIR_PIN    13
+#define LED_PIN    26
+#define BUZZER_PIN 27
+#define TRIG_PIN   17
+#define ECHO_PIN   35
+
+#define BUZZER_FREQ 2000
+
+// LCD
+LiquidCrystal_I2C lcd(0x27, 20, 4);
+
+// NTP
+WiFiUDP ntpUDP;
+NTPClient timeClient(ntpUDP, "pool.ntp.org", 8 * 3600, 60000);
+
+// State
+bool   ledState        = false;
+bool   buzzerState     = false;
+bool   ledEnabled      = true;
+bool   buzzerEnabled   = true;
+bool   alertActive     = false;
+bool   uiConnected     = false;
+bool   motionDetected  = false;
+bool   objectDetected  = false;
+String savedNumber     = "";
+unsigned long lastAlertTime    = 0;
+unsigned long lastPollTime     = 0;
+unsigned long lastUiActivity   = 0;
+unsigned long lastStatusUpdate = 0;
+
+// --- FIX: added per-sensor detection timestamps for auto-clear ---
+unsigned long motionDetectedAt = 0;
+unsigned long objectDetectedAt = 0;
+const long DETECTION_CLEAR_TIME = 8000; // clear detection flag after 8 seconds of no trigger
+
+// Non-blocking sensor timing
+unsigned long pirStableStartTime  = 0;
+unsigned long ultrasonicLastRead  = 0;
+int pirStableCount       = 0;
+int ultrasonicValidCount = 0;
+const long PIR_STABLE_TIME        = 100;
+const long PIR_COOLDOWN           = 5000;
+const long ULTRASONIC_INTERVAL    = 50;
+const int  ULTRASONIC_VALID_READS = 3;
+
+// LED blinking for alerts
+unsigned long ledLastBlink        = 0;
+const long    LED_BLINK_INTERVAL  = 200;
+bool          ledBlinkState       = false;
+
+const long ALERT_COOLDOWN  = 10000;
+const long POLL_INTERVAL   = 500;
+const long UI_TIMEOUT      = 10000;
+const long STATUS_INTERVAL = 2000;
+
+// Sensor flags
+bool pirEnabled        = true;
+bool ultrasonicEnabled = true;
+bool monitoringArmed   = false;
+int  distanceThreshold = 50;
+
+// --- FIX: track last known device_state row ID to avoid re-inserting ---
+int lastDeviceStateId = -1;
+
+void setup() {
+  Serial.begin(115200);
+
+  // Initialize buzzer FIRST to prevent floating
+  pinMode(BUZZER_PIN, OUTPUT);
+  noTone(BUZZER_PIN);
+
+  pinMode(PIR_PIN, INPUT);
+  pinMode(LED_PIN, OUTPUT);
+  pinMode(TRIG_PIN, OUTPUT);
+  pinMode(ECHO_PIN, INPUT);
+
+  noTone(BUZZER_PIN);
+
+  lcd.init();
+  lcd.backlight();
+  lcdShow("WATCHTOWER", "Initializing...", "", "");
+
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  int attempts = 0;
+  while (WiFi.status() != WL_CONNECTED && attempts < 30) {
+    delay(500);
+    attempts++;
+  }
+
+  if (WiFi.status() == WL_CONNECTED) {
+    timeClient.begin();
+    timeClient.update();
+    lcdShow("WATCHTOWER", "WiFi Connected!", WiFi.localIP().toString(), "");
+  } else {
+    lcdShow("WATCHTOWER", "WiFi FAILED", "Running offline", "");
+  }
+
+  delay(2000);
+  updateConnectionStatus();
+  lcdShow("WATCHTOWER", "Waiting for app", "Please connect", "");
+}
+
+void loop() {
+  handlePIR();
+  handleUltrasonic();
+  clearStaleDetections(); // FIX: auto-clear detection flags after timeout
+  updateOutputs();
+  updateDetectionStatus();
+
+  if (millis() - lastPollTime > POLL_INTERVAL) {
+    lastPollTime = millis();
+    pollCommands();
+    pollDeviceState();
+    checkConnectionTimeout();
+  }
+}
+
+void lcdShow(String l1, String l2, String l3, String l4) {
+  lcd.clear();
+  String line1 = l1.length() > 20 ? l1.substring(0, 17) + "..." : l1;
+  String line2 = l2.length() > 20 ? l2.substring(0, 17) + "..." : l2;
+  String line3 = l3.length() > 20 ? l3.substring(0, 17) + "..." : l3;
+  String line4 = l4.length() > 20 ? l4.substring(0, 17) + "..." : l4;
+  lcd.setCursor(0, 0); lcd.print(line1);
+  lcd.setCursor(0, 1); lcd.print(line2);
+  lcd.setCursor(0, 2); lcd.print(line3);
+  lcd.setCursor(0, 3); lcd.print(line4);
+}
+
+// --- FIX: auto-clear motionDetected / objectDetected after inactivity ---
+void clearStaleDetections() {
+  unsigned long now = millis();
+  if (motionDetected && (now - motionDetectedAt > DETECTION_CLEAR_TIME)) {
+    motionDetected = false;
+    Serial.println("PIR: Detection flag cleared (timeout)");
+  }
+  if (objectDetected && (now - objectDetectedAt > DETECTION_CLEAR_TIME)) {
+    objectDetected = false;
+    Serial.println("ULTRASONIC: Detection flag cleared (timeout)");
+  }
+}
+
+void handlePIR() {
+  if (!pirEnabled || !monitoringArmed) {
+    // FIX: reset PIR state when disabled or disarmed so no stale state lingers
+    pirStableStartTime = 0;
+    pirStableCount     = 0;
+    return;
+  }
+
+  int pirValue = digitalRead(PIR_PIN);
+
+  if (pirValue == HIGH) {
+    if (pirStableStartTime == 0) {
+      pirStableStartTime = millis();
+      pirStableCount = 1;
+    } else if (millis() - pirStableStartTime >= PIR_STABLE_TIME) {
+      pirStableCount++;
+      if (pirStableCount >= 3) {
+        motionDetected    = true;
+        motionDetectedAt  = millis(); // FIX: record timestamp for auto-clear
+
+        // FIX: cooldown check moved BEFORE setting lastAlertTime;
+        //      Serial print is now correctly in the else branch.
+        if (millis() - lastAlertTime > ALERT_COOLDOWN) {
+          lastAlertTime = millis();
+          triggerAlert("Motion detected", "Alert");
+        } else {
+          Serial.println("PIR: Alert blocked by cooldown");
+        }
+
+        // Reset for next detection
+        pirStableStartTime = 0;
+        pirStableCount     = 0;
+      }
+    }
+  } else {
+    // PIR is LOW — reset state
+    if (pirStableStartTime > 0) {
+      Serial.println("PIR: Motion ended - resetting");
+    }
+    pirStableStartTime = 0;
+    pirStableCount     = 0;
+  }
+}
+
+void handleUltrasonic() {
+  if (!monitoringArmed || !ultrasonicEnabled) {
+    ultrasonicValidCount = 0; // FIX: reset count when disabled/disarmed
+    return;
+  }
+
+  unsigned long currentTime = millis();
+
+  if (currentTime - ultrasonicLastRead >= ULTRASONIC_INTERVAL) {
+    ultrasonicLastRead = currentTime;
+
+    long distance = getDistance();
+    Serial.println("ULTRASONIC: Distance " + String(distance) + " cm");
+
+    if (distance > 0 && distance < distanceThreshold) {
+      ultrasonicValidCount++;
+      Serial.println("ULTRASONIC: Valid reading #" + String(ultrasonicValidCount));
+
+      if (ultrasonicValidCount >= ULTRASONIC_VALID_READS) {
+        objectDetected   = true;
+        objectDetectedAt = currentTime; // FIX: record timestamp for auto-clear
+        Serial.println("ULTRASONIC: Object confirmed");
+
+        if (currentTime - lastAlertTime > ALERT_COOLDOWN) {
+          lastAlertTime = currentTime;
+          triggerAlert("Object detected", "Alert");
+        } else {
+          Serial.println("ULTRASONIC: Alert blocked by cooldown");
+        }
+        ultrasonicValidCount = 0;
+      }
+    } else {
+      if (ultrasonicValidCount > 0) {
+        Serial.println("ULTRASONIC: Object cleared - resetting count");
+      }
+      ultrasonicValidCount = 0;
+    }
+  }
+}
+
+long getDistance() {
+  digitalWrite(TRIG_PIN, LOW);
+  delayMicroseconds(2);
+  digitalWrite(TRIG_PIN, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(TRIG_PIN, LOW);
+  long duration = pulseIn(ECHO_PIN, HIGH, 30000);
+  return duration * 0.034 / 2;
+}
+
+void updateOutputs() {
+  if (alertActive) {
+    unsigned long currentTime = millis();
+    if (currentTime - ledLastBlink >= LED_BLINK_INTERVAL) {
+      ledLastBlink  = currentTime;
+      ledBlinkState = !ledBlinkState;
+      digitalWrite(LED_PIN, ledEnabled ? (ledBlinkState ? HIGH : LOW) : LOW);
+    }
+    if (buzzerEnabled) {
+      tone(BUZZER_PIN, BUZZER_FREQ);
+    } else {
+      noTone(BUZZER_PIN);
+    }
+  } else if (monitoringArmed) {
+    digitalWrite(LED_PIN, ledEnabled ? HIGH : LOW);
+    noTone(BUZZER_PIN);
+  } else {
+    digitalWrite(LED_PIN, LOW);
+    noTone(BUZZER_PIN);
+  }
+}
+
+void triggerAlert(String type, String status) {
+  alertActive = true;
+  updateOutputs();
+
+  lcdShow("!! ALERT !!", type, "Alert triggered", "");
+
+  for (int i = 0; i < 4; i++) {
+    if (buzzerEnabled) {
+      tone(BUZZER_PIN, BUZZER_FREQ);
+      delay(200);
+      noTone(BUZZER_PIN);
+      delay(100);
+    } else {
+      noTone(BUZZER_PIN);
+      delay(300);
+    }
+  }
+
+  saveAlertToSupabase(type, status);
+  delay(1000);
+
+  alertActive = false;
+  updateOutputs();
+  String statusText = monitoringArmed ? "monitoring" : "Monitoring...";
+  lcdShow("WATCHTOWER", statusText, savedNumber, "");
+}
+
+void beep(int duration) {
+  if (buzzerEnabled) {
+    tone(BUZZER_PIN, BUZZER_FREQ);
+    delay(duration);
+    noTone(BUZZER_PIN);
+  } else {
+    noTone(BUZZER_PIN);
+  }
+}
+
+void saveAlertToSupabase(String type, String status) {
+  if (WiFi.status() != WL_CONNECTED) return;
+  timeClient.update();
+  time_t epoch = timeClient.getEpochTime();
+  struct tm *ptm = gmtime((time_t*)&epoch);
+  int year  = ptm->tm_year + 1900;
+  int month = ptm->tm_mon + 1;
+  int day   = ptm->tm_mday;
+  String now = String(year) + "-" + String(month) + "-" + String(day)
+             + " " + timeClient.getFormattedTime();
+
+  HTTPClient http;
+  http.begin(String(SUPABASE_URL) + "/rest/v1/alert_logs");
+  http.addHeader("Content-Type",  "application/json");
+  http.addHeader("apikey",        SUPABASE_KEY);
+  http.addHeader("Authorization", "Bearer " + String(SUPABASE_KEY));
+  http.addHeader("Prefer",        "return=minimal");
+  http.setTimeout(2000);
+
+  String body = "{\"type\":\"" + type + "\",\"status\":\"" + status
+              + "\",\"time\":\"" + now
+              + "\",\"period\":\"Latest\",\"user_id\":null}";
+
+  Serial.println("=== ALERT LOGGING ===");
+  Serial.println("Type: " + type);
+  Serial.println("Status: " + status);
+  Serial.println("Time: " + now);
+  Serial.println("Body: " + body);
+
+  int httpResponse = http.POST(body);
+  Serial.println("HTTP Response: " + String(httpResponse));
+  Serial.println("===================");
+
+  http.end();
+}
+
+void pollDeviceState() {
+  if (WiFi.status() != WL_CONNECTED) return;
+  HTTPClient http;
+  http.begin(String(SUPABASE_URL) + "/rest/v1/device_state?order=id.desc&limit=1");
+  http.addHeader("apikey",        SUPABASE_KEY);
+  http.addHeader("Authorization", "Bearer " + String(SUPABASE_KEY));
+  http.setTimeout(1000);
+
+  int code = http.GET();
+  if (code == 200) {
+    String payload = http.getString();
+    StaticJsonDocument<512> doc;
+    deserializeJson(doc, payload);
+    if (doc.size() > 0) {
+      savedNumber    = doc[0]["phone"].as<String>();
+      monitoringArmed = doc[0]["monitoring_armed"].as<bool>();
+    }
+  }
+  http.end();
+}
+
+void pollCommands() {
+  if (WiFi.status() != WL_CONNECTED) return;
+  HTTPClient http;
+  http.begin(String(SUPABASE_URL) + "/rest/v1/device_commands?executed=eq.false&order=id.asc");
+  http.addHeader("apikey",        SUPABASE_KEY);
+  http.addHeader("Authorization", "Bearer " + String(SUPABASE_KEY));
+  http.setTimeout(1000);
+
+  int code = http.GET();
+  if (code == 200) {
+    String payload = http.getString();
+    StaticJsonDocument<1024> doc;
+    deserializeJson(doc, payload);
+    String commandMessage   = "";
+    String monitoringMessage = "";
+
+    if (doc.size() > 0) {
+      lastUiActivity = millis();
+      if (!uiConnected) {
+        uiConnected = true;
+        updateConnectionStatus();
+      }
+    }
+
+    for (size_t i = 0; i < doc.size(); ++i) {
+      String cmd  = doc[i]["command"].as<String>();
+      int    cmdId = doc[i]["id"].as<int>();
+      String msg  = executeCommand(cmd, cmdId);
+      if (msg.startsWith("SYSTEM") || msg.startsWith("MONITORING")) {
+        monitoringMessage = msg;
+      } else if (msg.length() > 0) {
+        commandMessage = msg;
+      }
+    }
+
+    if (monitoringMessage.length() > 0) {
+      lcdShow("WATCHTOWER", monitoringMessage, "Remote command", "");
+    } else if (commandMessage.length() > 0) {
+      lcdShow("WATCHTOWER", commandMessage, "Remote command", "");
+    }
+  }
+  http.end();
+}
+
+String executeCommand(String cmd, int cmdId) {
+  String message = "";
+
+  if (cmd == "LED_ON") {
+    ledEnabled = true;
+    message = "LED: READY";
+  } else if (cmd == "LED_OFF") {
+    ledEnabled = false;
+    digitalWrite(LED_PIN, LOW);
+    message = "LED: OFF";
+  } else if (cmd == "BUZZER_ON") {
+    buzzerEnabled = true;
+    message = "Buzzer: READY";
+  } else if (cmd == "BUZZER_OFF") {
+    buzzerEnabled = false;
+    noTone(BUZZER_PIN);
+    message = "Buzzer: OFF";
+  } else if (cmd == "PIR_ON") {
+    pirEnabled = true;
+    message = "PIR: ENABLED";
+  } else if (cmd == "PIR_OFF") {
+    pirEnabled = false;
+    // FIX: reset PIR state when disabled so no stale detection lingers
+    pirStableStartTime = 0;
+    pirStableCount     = 0;
+    message = "PIR: DISABLED";
+  } else if (cmd == "ULTRASONIC_ON") {
+    ultrasonicEnabled = true;
+    message = "Ultrasonic: ON";
+  } else if (cmd == "ULTRASONIC_OFF") {
+    ultrasonicEnabled = false;
+    ultrasonicValidCount = 0; // FIX: reset count when disabled
+    message = "Ultrasonic: OFF";
+  } else if (cmd == "MONITORING_ON") {
+    monitoringArmed = true;
+    ledEnabled      = true;
+    message = "MONITORING: ARMED";
+  } else if (cmd == "MONITORING_OFF") {
+    monitoringArmed      = false;
+    ledEnabled           = false;
+    buzzerEnabled        = false;
+    ledState             = false;
+    buzzerState          = false;
+    motionDetected       = false; // FIX: clear detection state on disarm
+    objectDetected       = false;
+    pirStableStartTime   = 0;
+    pirStableCount       = 0;
+    ultrasonicValidCount = 0;
+    digitalWrite(LED_PIN, LOW);
+    noTone(BUZZER_PIN);
+    message = "SYSTEM DISARMED";
+  } else if (cmd.startsWith("SET_DISTANCE_")) {
+    distanceThreshold = cmd.substring(13).toInt();
+    message = "Threshold: " + String(distanceThreshold) + " cm";
+    long testDistance = getDistance();
+    Serial.println("Distance threshold set to: " + String(distanceThreshold) + " cm");
+    Serial.println("Current distance reading: " + String(testDistance) + " cm");
+  }
+
+  updateOutputs();
+  markCommandExecuted(cmdId);
+  syncDeviceStateToSupabase();
+  return message;
+}
+
+// --- FIX: use PATCH (upsert) instead of POST to avoid inserting duplicate rows ---
+void syncDeviceStateToSupabase() {
+  if (WiFi.status() != WL_CONNECTED) return;
+  HTTPClient http;
+  // Use upsert on a fixed id=1 row; create the row on first run with id=1 in your Supabase table
+  http.begin(String(SUPABASE_URL) + "/rest/v1/device_state?id=eq.1");
+  http.addHeader("Content-Type",  "application/json");
+  http.addHeader("apikey",        SUPABASE_KEY);
+  http.addHeader("Authorization", "Bearer " + String(SUPABASE_KEY));
+  http.addHeader("Prefer",        "return=minimal,resolution=merge-duplicates");
+  http.setTimeout(2000);
+
+  String lcdText = getConnectionStatusText();
+  String body = "{\"id\":1,\"phone\":\"" + savedNumber
+              + "\",\"lcd\":\"" + lcdText
+              + "\",\"sms_enabled\":true,\"monitoring_armed\":"
+              + String(monitoringArmed ? "true" : "false") + "}";
+
+  http.PATCH(body);
+  http.end();
+}
+
+void markCommandExecuted(int cmdId) {
+  if (WiFi.status() != WL_CONNECTED) return;
+  HTTPClient http;
+  http.begin(String(SUPABASE_URL) + "/rest/v1/device_commands?id=eq." + String(cmdId));
+  http.addHeader("Content-Type",  "application/json");
+  http.addHeader("apikey",        SUPABASE_KEY);
+  http.addHeader("Authorization", "Bearer " + String(SUPABASE_KEY));
+  http.setTimeout(1000);
+  // FIX: executed should be boolean true, not string "true"
+  http.PATCH("{\"executed\":true}");
+  http.end();
+}
+
+void checkConnectionTimeout() {
+  if (uiConnected && (millis() - lastUiActivity > UI_TIMEOUT)) {
+    uiConnected = false;
+    updateConnectionStatus();
+  }
+}
+
+void updateConnectionStatus() {
+  if (uiConnected) {
+    String status = monitoringArmed ? "monitoring" : "System Ready";
+    lcdShow("WATCHTOWER", "Connected", status, "");
+  } else {
+    String status = monitoringArmed ? "monitoring" : "Waiting for app";
+    lcdShow("WATCHTOWER", status, monitoringArmed ? "System active" : "Please connect", "");
+  }
+}
+
+void updateDetectionStatus() {
+  unsigned long currentTime = millis();
+  if (currentTime - lastStatusUpdate < STATUS_INTERVAL) return;
+  lastStatusUpdate = currentTime;
+
+  String statusLine = "";
+  if (!motionDetected && !objectDetected) {
+    statusLine = "No detected";
+  } else if (motionDetected && objectDetected) {
+    statusLine = "Motion + Object";
+  } else if (motionDetected) {
+    statusLine = "Motion detected";
+  } else {
+    statusLine = "Object detected";
+  }
+
+  if (uiConnected) {
+    String systemStatus = monitoringArmed ? "monitoring" : "System Ready";
+    lcdShow("WATCHTOWER", "Connected", systemStatus, statusLine);
+  } else {
+    String status = monitoringArmed ? "monitoring" : "Waiting for app";
+    lcdShow("WATCHTOWER", status, monitoringArmed ? "System active" : "Please connect", statusLine);
+  }
+}
+
+String getConnectionStatusText() {
+  if (uiConnected) {
+    return monitoringArmed ? "monitoring" : "System Ready";
+  } else {
+    return "Waiting for app";
+  }
+}
