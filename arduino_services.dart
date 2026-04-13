@@ -17,7 +17,6 @@ class ArduinoService {
   bool _monitoringArmed = false;
   bool _smsEnabled = true;
   int _distanceThreshold = 50;
-
   bool _isKeypadListening = false;
   bool _isAlertListening = false;
 
@@ -31,23 +30,11 @@ class ArduinoService {
 
   // ── Phone + LCD state ──────────────────────────────────
   String _savedNumber = '';
-  // Default LCD text shown when the system starts up
-  String _lcdText = 'SYSTEM READY';
-
+  String _lcdText = 'NO NUMBER SAVED';
   String get savedNumber => _savedNumber;
   String get lcdText => _lcdText;
 
-  // ── Streams ────────────────────────────────────────────
-  final StreamController<Map<String, dynamic>> _dataController =
-      StreamController<Map<String, dynamic>>.broadcast();
-  Stream<Map<String, dynamic>> get dataStream => _dataController.stream;
-
-  final StreamController<List<Map<String, dynamic>>> _alertController =
-      StreamController<List<Map<String, dynamic>>>.broadcast();
-  Stream<List<Map<String, dynamic>>> get alertStream =>
-      _alertController.stream;
-
-  // ── Device state loader ────────────────────────────────
+  // ── Device state loader ─────────────────────────────────
   Future<void> loadDeviceState() async {
     try {
       final data = await _supabase
@@ -61,8 +48,7 @@ class ArduinoService {
         _savedNumber = latest['phone'] ?? _savedNumber;
         _lcdText = latest['lcd'] ?? _lcdText;
         _smsEnabled = latest['sms_enabled'] ?? _smsEnabled;
-        _monitoringArmed =
-            latest['monitoring_armed'] ?? _monitoringArmed;
+        _monitoringArmed = latest['monitoring_armed'] ?? _monitoringArmed;
         _dataController.add({
           'savedNumber': _savedNumber,
           'lcd': _lcdText,
@@ -75,37 +61,44 @@ class ArduinoService {
     }
   }
 
+  // ── Streams ────────────────────────────────────────────
+  final StreamController<Map<String, dynamic>> _dataController =
+      StreamController<Map<String, dynamic>>.broadcast();
+  Stream<Map<String, dynamic>> get dataStream => _dataController.stream;
+
+  final StreamController<List<Map<String, dynamic>>> _alertController =
+      StreamController<List<Map<String, dynamic>>>.broadcast();
+  Stream<List<Map<String, dynamic>>> get alertStream => _alertController.stream;
+
   // ── Keypad / LCD listener ──────────────────────────────
   Future<void> startKeypadListening() async {
     if (_isKeypadListening) return;
     _isKeypadListening = true;
-    await loadDeviceState();
 
+    await loadDeviceState();
     _supabase
         .from('device_state')
         .stream(primaryKey: ['id'])
         .order('id', ascending: false)
         .limit(1)
         .listen((data) {
-          if (data.isNotEmpty) {
-            final latest = data.first;
-            _savedNumber = latest['phone'] ?? _savedNumber;
-            _lcdText = latest['lcd'] ?? _lcdText;
-            _smsEnabled = latest['sms_enabled'] ?? _smsEnabled;
-            _monitoringArmed =
-                latest['monitoring_armed'] ?? _monitoringArmed;
-            _dataController.add({
-              'savedNumber': _savedNumber,
-              'lcd': _lcdText,
-              'smsEnabled': _smsEnabled,
-              'monitoringArmed': _monitoringArmed,
-            });
-          }
+      if (data.isNotEmpty) {
+        final latest = data.first;
+        _savedNumber = latest['phone'] ?? _savedNumber;
+        _lcdText = latest['lcd'] ?? _lcdText;
+        _smsEnabled = latest['sms_enabled'] ?? _smsEnabled;
+        _monitoringArmed = latest['monitoring_armed'] ?? _monitoringArmed;
+        _dataController.add({
+          'savedNumber': _savedNumber,
+          'lcd': _lcdText,
+          'smsEnabled': _smsEnabled,
+          'monitoringArmed': _monitoringArmed,
         });
+      }
+    });
   }
 
   // ── Alert log listener ─────────────────────────────────
-  // Uses Supabase Realtime — fires on every INSERT to alert_logs.
   void startListening() {
     if (_isAlertListening) return;
     _isAlertListening = true;
@@ -115,8 +108,8 @@ class ArduinoService {
         .stream(primaryKey: ['id'])
         .order('id', ascending: false)
         .listen((data) {
-          _alertController.add(data);
-        });
+      _alertController.add(data);
+    });
   }
 
   // ── Save phone number ──────────────────────────────────
@@ -130,7 +123,10 @@ class ArduinoService {
       });
       _savedNumber = number;
       _lcdText = 'NUMBER SAVED';
-      _dataController.add({'savedNumber': _savedNumber, 'lcd': _lcdText});
+      _dataController.add({
+        'savedNumber': _savedNumber,
+        'lcd': _lcdText,
+      });
     } catch (e) {
       print('Save error: $e');
     }
@@ -149,29 +145,25 @@ class ArduinoService {
   }
 
   // ── LED ────────────────────────────────────────────────
-  /// Explicitly set LED to [on] state (does NOT toggle).
+  Future<void> toggleLED() async {
+    _ledStatus = !_ledStatus;
+    await sendCommand(_ledStatus ? 'LED_ON' : 'LED_OFF');
+  }
+
   Future<void> setLed(bool on) async {
     _ledStatus = on;
     await sendCommand(on ? 'LED_ON' : 'LED_OFF');
   }
 
-  /// Toggle LED (convenience wrapper).
-  Future<void> toggleLED() async {
-    await setLed(!_ledStatus);
+  // ── Buzzer ─────────────────────────────────────────────
+  Future<void> toggleBuzzer() async {
+    _buzzerStatus = !_buzzerStatus;
+    await sendCommand(_buzzerStatus ? 'BUZZER_ON' : 'BUZZER_OFF');
   }
 
-  // ── Buzzer ─────────────────────────────────────────────
-  /// Explicitly set Buzzer to [on] state (does NOT toggle).
-  /// This fixes the bug where turning buzzer OFF still played sound
-  /// because toggleBuzzer() was racing with the previous state.
   Future<void> setBuzzer(bool on) async {
     _buzzerStatus = on;
     await sendCommand(on ? 'BUZZER_ON' : 'BUZZER_OFF');
-  }
-
-  /// Toggle Buzzer (convenience wrapper).
-  Future<void> toggleBuzzer() async {
-    await setBuzzer(!_buzzerStatus);
   }
 
   // ── PIR sensor ─────────────────────────────────────────
@@ -183,38 +175,18 @@ class ArduinoService {
   // ── Ultrasonic sensor ──────────────────────────────────
   Future<void> toggleUltrasonic() async {
     _ultrasonicEnabled = !_ultrasonicEnabled;
-    await sendCommand(
-        _ultrasonicEnabled ? 'ULTRASONIC_ON' : 'ULTRASONIC_OFF');
+    await sendCommand(_ultrasonicEnabled ? 'ULTRASONIC_ON' : 'ULTRASONIC_OFF');
   }
 
   // ── ARM / DISARM monitoring ────────────────────────────
-  /// Sets monitoring armed state WITHOUT touching LED/Buzzer.
-  /// The dashboard calls setLed() and setBuzzer() explicitly after this.
-  Future<void> setMonitoringArmed(bool armed) async {
+  Future<void> setMonitoring(bool armed) async {
     _monitoringArmed = armed;
     await sendCommand(armed ? 'MONITORING_ON' : 'MONITORING_OFF');
-  }
-
-  /// Legacy method kept for compatibility — now delegates to setMonitoringArmed.
-  Future<void> setMonitoring(bool armed) async {
-    await setMonitoringArmed(armed);
-  }
-
-  // ── LCD text update ────────────────────────────────────
-  /// Inserts a new device_state row with the given LCD text so the
-  /// ESP32 can pick it up and display it on the physical LCD.
-  Future<void> setLcdText(String text) async {
-    try {
-      await _supabase.from('device_state').insert({
-        'phone': _savedNumber,
-        'lcd': text,
-        'sms_enabled': _smsEnabled,
-        'monitoring_armed': _monitoringArmed,
-      });
-      _lcdText = text;
-      _dataController.add({'savedNumber': _savedNumber, 'lcd': _lcdText});
-    } catch (e) {
-      print('LCD update error: $e');
+    if (!armed) {
+      _ledStatus = false;
+      _buzzerStatus = false;
+      await sendCommand('LED_OFF');
+      await sendCommand('BUZZER_OFF');
     }
   }
 
