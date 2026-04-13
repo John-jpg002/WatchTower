@@ -26,6 +26,7 @@ class AboutScreen extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 24),
+
             // ── Row 1: Founder + Co-Founder ─────────────────
             Row(
               children: [
@@ -45,7 +46,8 @@ class AboutScreen extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 12),
-            // ── Row 2: Ezekiel (centered) ────────────────────
+
+            // ── Row 2: Ezekiel (restored) ─────────────────
             Row(
               children: [
                 _teamCard(
@@ -54,8 +56,8 @@ class AboutScreen extends StatelessWidget {
                   role: 'Co-Founder',
                   description: 'Maker of Watchtower',
                 ),
-                // Empty expanded to keep card same width as above
                 const SizedBox(width: 12),
+                // Empty expanded to keep card same width as above
                 const Expanded(child: SizedBox()),
               ],
             ),
