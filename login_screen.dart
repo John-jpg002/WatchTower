@@ -1,5 +1,5 @@
 // lib/screens/login_screen.dart
-
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../main.dart';
@@ -38,10 +38,23 @@ class _LoginScreenState extends State<LoginScreen> {
           (_) => false,
         );
       }
-    } on AuthException catch (e) {
-      _showError(e.message);
     } catch (e) {
-      _showError('An error occurred. Please try again.');
+      String errorMsg = e.toString().toLowerCase();
+      
+      // Check for DNS/host lookup failures first
+      if (errorMsg.contains('failed host lookup') || errorMsg.contains('no address associated with hostname')) {
+        _showError('DNS Error: Cannot reach Supabase server. Check your internet connection or try again later.');
+      } else if (errorMsg.contains('timeout')) {
+        _showError('Connection timeout. Please check your internet connection and try again.');
+      } else if (e is AuthException) {
+        _showError((e as AuthException).message);
+      } else if (errorMsg.contains('socket') || errorMsg.contains('host lookup')) {
+        _showError('Network error: Cannot reach server. Please check internet connection.');
+      } else if (errorMsg.contains('connection')) {
+        _showError('Connection failed. Please check your internet connection.');
+      } else {
+        _showError('An error occurred. Please try again.');
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -49,10 +62,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   void _showError(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(msg),
-        backgroundColor: AppColors.alertRed,
-      ),
+      SnackBar(content: Text(msg), backgroundColor: AppColors.alertRed),
     );
   }
 
@@ -88,8 +98,8 @@ class _LoginScreenState extends State<LoginScreen> {
                         fontWeight: FontWeight.bold,
                         letterSpacing: 4)),
                 const Text('APP',
-                    style:
-                        TextStyle(color: AppColors.textSecondary, fontSize: 10)),
+                    style: TextStyle(
+                        color: AppColors.textSecondary, fontSize: 10)),
                 const SizedBox(height: 24),
                 const Align(
                   alignment: Alignment.centerLeft,
