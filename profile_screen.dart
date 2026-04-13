@@ -1,6 +1,6 @@
 // lib/screens/profile_screen.dart
-
 import 'package:flutter/material.dart';
+import '../main.dart';
 import '../utils/constants.dart';
 import '../widgets/app_drawer.dart';
 import '../widgets/app_header.dart';
@@ -10,6 +10,11 @@ class ProfileScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final user = supabase.auth.currentUser;
+    final fullName = user?.userMetadata?['full_name'] ?? 'No Name';
+    final email = user?.email ?? 'No Email';
+    final phone = user?.userMetadata?['phone'] ?? 'No Phone';
+
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: const WatchtowerAppBar(),
@@ -34,29 +39,31 @@ class ProfileScreen extends StatelessWidget {
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(color: AppColors.cyanDark),
               ),
-              child: const Row(
+              child: Row(
                 children: [
-                  CircleAvatar(
+                  const CircleAvatar(
                     radius: 28,
                     backgroundColor: AppColors.cyanDark,
                     child: Icon(Icons.person,
                         color: AppColors.cyan, size: 30),
                   ),
-                  SizedBox(width: 14),
+                  const SizedBox(width: 14),
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('mike wazowski',
-                          style: TextStyle(
+                      Text(fullName,
+                          style: const TextStyle(
                               color: AppColors.textPrimary,
                               fontWeight: FontWeight.bold,
                               fontSize: 15)),
-                      Text('youremail@gmail.com',
-                          style: TextStyle(
-                              color: AppColors.textSecondary, fontSize: 12)),
-                      Text('+63 917 400 1235',
-                          style: TextStyle(
-                              color: AppColors.textSecondary, fontSize: 12)),
+                      Text(email,
+                          style: const TextStyle(
+                              color: AppColors.textSecondary,
+                              fontSize: 12)),
+                      Text(phone,
+                          style: const TextStyle(
+                              color: AppColors.textSecondary,
+                              fontSize: 12)),
                     ],
                   ),
                 ],
