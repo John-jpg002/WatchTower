@@ -1,7 +1,5 @@
 // lib/screens/splash_screen.dart
-
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import '../utils/constants.dart';
 import '../main.dart';
 import 'login_screen.dart';
@@ -29,9 +27,7 @@ class _SplashScreenState extends State<SplashScreen>
         CurvedAnimation(parent: _controller, curve: Curves.easeIn));
     _scaleAnim = Tween<double>(begin: 0.7, end: 1.0).animate(
         CurvedAnimation(parent: _controller, curve: Curves.elasticOut));
-
     _controller.forward();
-
     Future.delayed(const Duration(seconds: 3), () {
       if (mounted) _checkAuth();
     });
