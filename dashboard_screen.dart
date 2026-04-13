@@ -1,4 +1,3 @@
-// lib/screens/dashboard_screen.dart
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -51,17 +50,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ? '${alerts.first['type']} (${alerts.first['status']})'
             : 'No alerts yet';
       });
-
       if (alerts.isNotEmpty &&
           (previousLastAlertId == null ||
               alerts.first['id'] != previousLastAlertId)) {
         previousLastAlertId = alerts.first['id'];
         _showAlertBanner(alerts.first['type'] ?? 'Alert');
-
         // ESP32 auto-turns LED+Buzzer OFF after alert (2 s window).
         // Mirror that in the UI after 3 s.
         Future.delayed(const Duration(seconds: 3), () {
-          if (mounted) setState(() { _led = false; _buzzer = false; });
+          if (mounted) setState(() {
+            _led = false;
+            _buzzer = false;
+          });
         });
       }
     });
@@ -70,9 +70,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _deviceStateSubscription = _arduino.dataStream.listen((data) {
       if (!mounted) return;
       setState(() {
-        if (data.containsKey('led_enabled'))    _led    = data['led_enabled'];
+        if (data.containsKey('led_enabled')) _led = data['led_enabled'];
         if (data.containsKey('buzzer_enabled')) _buzzer = data['buzzer_enabled'];
-        if (data.containsKey('monitoringArmed'))_armed  = data['monitoringArmed'];
+        if (data.containsKey('monitoringArmed')) _armed = data['monitoringArmed'];
       });
     });
   }
@@ -81,10 +81,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
     await _arduino.startKeypadListening();
     if (!mounted) return;
     setState(() {
-      _armed             = _arduino.monitoringArmed;
-      _led               = _arduino.ledStatus;
-      _buzzer            = _arduino.buzzerStatus;
-      _pirEnabled        = _arduino.pirEnabled;
+      _armed = _arduino.monitoringArmed;
+      _led = _arduino.ledStatus;
+      _buzzer = _arduino.buzzerStatus;
+      _pirEnabled = _arduino.pirEnabled;
       _ultrasonicEnabled = _arduino.ultrasonicEnabled;
     });
   }
@@ -130,41 +130,45 @@ class _DashboardScreenState extends State<DashboardScreen> {
       content: Row(children: [
         const Icon(Icons.warning_amber, color: Colors.white),
         const SizedBox(width: 8),
-        Text('ALERT: $message', style: const TextStyle(fontWeight: FontWeight.bold)),
+        Text('ALERT: $message',
+            style: const TextStyle(fontWeight: FontWeight.bold)),
       ]),
       backgroundColor: AppColors.alertRed,
       duration: const Duration(seconds: 4),
     ));
   }
 
-  /// ARM  → sends MONITORING_ON only. LED and Buzzer stay OFF.
-  ///         They activate automatically on the ESP32 when a sensor fires.
-  /// DISARM → sends MONITORING_OFF + LED_OFF + BUZZER_OFF.
+  /// ARM -> sends MONITORING_ON, then immediately turns LED ON (buzzer stays OFF).
+  /// DISARM -> sends MONITORING_OFF + LED_OFF + BUZZER_OFF.
   Future<void> _toggleArm() async {
     setState(() => _armLoading = true);
     final newArmed = !_armed;
 
     if (newArmed) {
-      await _arduino.setMonitoringArmed(true);
-      await _arduino.setLcdText('SYSTEM ARMED');
+      // ARM - turn ON monitoring and LED immediately, buzzer stays OFF until actual alert
+      await _arduino.setMonitoring(true);
+      await _arduino.setLed(true);
+      await _arduino.setBuzzer(false); // Buzzer should be OFF when armed (only LED as status)
+      // LCD text updated automatically by Arduino
       if (mounted) {
         setState(() {
-          _armed      = true;
-          _led        = false;  // OFF until sensor fires
-          _buzzer     = false;  // OFF until sensor fires
+          _armed = true;
+          _led = true;
+          _buzzer = false; // Buzzer OFF when armed
           _armLoading = false;
         });
       }
     } else {
-      await _arduino.setMonitoringArmed(false);
+      // DISARM - turn everything off
+      await _arduino.setMonitoring(false);
       await _arduino.setLed(false);
       await _arduino.setBuzzer(false);
-      await _arduino.setLcdText('SYSTEM DISARMED');
+      // LCD text updated automatically by Arduino
       if (mounted) {
         setState(() {
-          _armed      = false;
-          _led        = false;
-          _buzzer     = false;
+          _armed = false;
+          _led = false;
+          _buzzer = false;
           _armLoading = false;
         });
       }
@@ -208,17 +212,29 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 padding: const EdgeInsets.all(14),
                 margin: const EdgeInsets.only(bottom: 16),
                 decoration: BoxDecoration(
-                  color: _armed ? AppColors.alertRed.withOpacity(0.15) : AppColors.cardMid,
+                  color: _armed
+                      ? AppColors.alertRed.withOpacity(0.15)
+                      : AppColors.cardMid,
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: _armed ? AppColors.alertRed : AppColors.cyanDark),
+                  border: Border.all(
+                      color: _armed
+                          ? AppColors.alertRed
+                          : AppColors.cyanDark),
                 ),
                 child: Row(
                   children: [
                     _armLoading
-                        ? const SizedBox(height: 22, width: 22,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.cyan))
-                        : Icon(_armed ? Icons.shield : Icons.shield_outlined,
-                            color: _armed ? AppColors.alertRed : AppColors.cyan, size: 22),
+                        ? const SizedBox(
+                            height: 22,
+                            width: 22,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: AppColors.cyan))
+                        : Icon(
+                            _armed ? Icons.shield : Icons.shield_outlined,
+                            color: _armed
+                                ? AppColors.alertRed
+                                : AppColors.cyan,
+                            size: 22),
                     const SizedBox(width: 12),
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -226,15 +242,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         Text(
                           _armed ? 'SYSTEM ARMED' : 'SYSTEM DISARMED',
                           style: TextStyle(
-                            color: _armed ? AppColors.alertRed : AppColors.cyan,
-                            fontWeight: FontWeight.bold, fontSize: 13,
+                            color: _armed
+                                ? AppColors.alertRed
+                                : AppColors.cyan,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
                           ),
                         ),
                         Text(
                           _armed
-                              ? 'LED & Buzzer activate on detection'
-                              : 'No alerts triggered — tap to arm',
-                          style: const TextStyle(color: AppColors.textSecondary, fontSize: 11),
+                              ? 'LED ON - Buzzer activates on alert'
+                              : 'No alerts triggered - tap to arm',
+                          style: const TextStyle(
+                              color: AppColors.textSecondary, fontSize: 11),
                         ),
                       ],
                     ),
@@ -249,12 +269,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
               children: [
                 Expanded(
                   child: _alarmCard(
-                    icon: '👁', label: 'PIR Sensor',
-                    status: _pirEnabled, loading: _pirLoading,
-                    subtitle: _pirEnabled ? 'Motion detection active' : 'PIR sensor disabled',
+                    icon: '👁',
+                    label: 'PIR Sensor',
+                    status: _pirEnabled,
+                    loading: _pirLoading,
+                    subtitle: _pirEnabled
+                        ? 'Motion detection active'
+                        : 'PIR sensor disabled',
                     onTap: () async {
                       setState(() => _pirLoading = true);
-                      await _sendSensorCommand(_pirEnabled ? 'PIR_OFF' : 'PIR_ON', () {
+                      await _sendSensorCommand(
+                          _pirEnabled ? 'PIR_OFF' : 'PIR_ON', () {
                         _pirEnabled = !_pirEnabled;
                       });
                       setState(() => _pirLoading = false);
@@ -264,12 +289,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: _alarmCard(
-                    icon: '📡', label: 'Ultrasonic',
-                    status: _ultrasonicEnabled, loading: _ultrasonicLoading,
-                    subtitle: _ultrasonicEnabled ? 'Distance monitoring active' : 'Ultrasonic disabled',
+                    icon: '📡',
+                    label: 'Ultrasonic',
+                    status: _ultrasonicEnabled,
+                    loading: _ultrasonicLoading,
+                    subtitle: _ultrasonicEnabled
+                        ? 'Distance monitoring active'
+                        : 'Ultrasonic disabled',
                     onTap: () async {
                       setState(() => _ultrasonicLoading = true);
-                      await _sendSensorCommand(_ultrasonicEnabled ? 'ULTRASONIC_OFF' : 'ULTRASONIC_ON', () {
+                      await _sendSensorCommand(
+                          _ultrasonicEnabled
+                              ? 'ULTRASONIC_OFF'
+                              : 'ULTRASONIC_ON', () {
                         _ultrasonicEnabled = !_ultrasonicEnabled;
                       });
                       setState(() => _ultrasonicLoading = false);
@@ -278,8 +310,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
               ],
             ),
-
             const SizedBox(height: 14),
+
+            // Ultrasonic threshold slider
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(14),
@@ -292,10 +325,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text('Ultrasonic Threshold',
-                      style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold, fontSize: 13)),
+                      style: TextStyle(
+                          color: AppColors.textPrimary,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13)),
                   const SizedBox(height: 6),
                   Text('Trigger alert below $_distanceThreshold cm',
-                      style: const TextStyle(color: AppColors.textSecondary, fontSize: 11)),
+                      style: const TextStyle(
+                          color: AppColors.textSecondary, fontSize: 11)),
                   const SizedBox(height: 12),
                   SliderTheme(
                     data: SliderTheme.of(context).copyWith(
@@ -305,10 +342,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       overlayColor: AppColors.cyan.withOpacity(0.2),
                     ),
                     child: Slider(
-                      min: 10, max: 200, divisions: 19,
+                      min: 10,
+                      max: 200,
+                      divisions: 19,
                       value: _distanceThreshold.toDouble(),
                       onChanged: _ultrasonicEnabled
-                          ? (val) => setState(() => _distanceThreshold = val.toInt())
+                          ? (val) =>
+                              setState(() => _distanceThreshold = val.toInt())
                           : null,
                       onChangeEnd: _ultrasonicEnabled
                           ? (val) => _setDistanceThreshold(val.toInt())
@@ -318,8 +358,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ],
               ),
             ),
-
             const SizedBox(height: 16),
+
+            // Last alert banner
             if (_lastAlert != 'No alerts yet')
               Container(
                 width: double.infinity,
@@ -328,15 +369,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 decoration: BoxDecoration(
                   color: AppColors.alertRed.withOpacity(0.15),
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: AppColors.alertRed.withOpacity(0.5)),
+                  border: Border.all(
+                      color: AppColors.alertRed.withOpacity(0.5)),
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.warning_amber, color: AppColors.alertRed, size: 20),
+                    const Icon(Icons.warning_amber,
+                        color: AppColors.alertRed, size: 20),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text('Last alert: $_lastAlert',
-                          style: const TextStyle(color: AppColors.alertRed, fontSize: 13)),
+                          style: const TextStyle(
+                              color: AppColors.alertRed, fontSize: 13)),
                     ),
                   ],
                 ),
@@ -348,32 +392,46 @@ class _DashboardScreenState extends State<DashboardScreen> {
               children: [
                 Expanded(
                   child: _alarmCard(
-                    icon: '💡', label: 'LED Indicator',
-                    status: _led, loading: _ledLoading,
-                    subtitle: _led ? 'Light is ON'
-                        : _armed ? 'Activates on detection'
-                        : 'Light is OFF',
+                    icon: '💡',
+                    label: 'LED Indicator',
+                    status: _led,
+                    loading: _ledLoading,
+                    subtitle: _led
+                        ? 'Light is ON'
+                        : _armed
+                            ? 'Tap to turn back ON'
+                            : 'Light is OFF',
                     onTap: () async {
                       setState(() => _ledLoading = true);
                       final newState = !_led;
                       await _arduino.setLed(newState);
-                      setState(() { _led = newState; _ledLoading = false; });
+                      setState(() {
+                        _led = newState;
+                        _ledLoading = false;
+                      });
                     },
                   ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: _alarmCard(
-                    icon: '🔔', label: 'Buzzer Alarm',
-                    status: _buzzer, loading: _buzzerLoading,
-                    subtitle: _buzzer ? 'Alarm is ON'
-                        : _armed ? 'Activates on detection'
-                        : 'Alarm is OFF',
+                    icon: '🔔',
+                    label: 'Buzzer Alarm',
+                    status: _buzzer,
+                    loading: _buzzerLoading,
+                    subtitle: _buzzer
+                        ? 'Alarm is ON'
+                        : _armed
+                            ? 'Activates during alerts'
+                            : 'Alarm is OFF',
                     onTap: () async {
                       setState(() => _buzzerLoading = true);
                       final newState = !_buzzer;
                       await _arduino.setBuzzer(newState);
-                      setState(() { _buzzer = newState; _buzzerLoading = false; });
+                      setState(() {
+                        _buzzer = newState;
+                        _buzzerLoading = false;
+                      });
                     },
                   ),
                 ),
@@ -393,14 +451,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
         decoration: BoxDecoration(
           color: AppColors.cardMid,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppColors.cyanDark.withOpacity(0.5)),
+          border:
+              Border.all(color: AppColors.cyanDark.withOpacity(0.5)),
         ),
         child: Column(
           children: [
             Text(icon, style: const TextStyle(fontSize: 20)),
             const SizedBox(height: 4),
-            Text(label, textAlign: TextAlign.center,
-                style: const TextStyle(color: AppColors.textPrimary, fontSize: 11, fontWeight: FontWeight.w500)),
+            Text(label,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                    color: AppColors.textPrimary,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500)),
           ],
         ),
       ),
@@ -408,9 +471,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _alarmCard({
-    required String icon, required String label,
-    required bool status, required bool loading,
-    required String subtitle, required VoidCallback onTap,
+    required String icon,
+    required String label,
+    required bool status,
+    required bool loading,
+    required String subtitle,
+    required VoidCallback onTap,
   }) {
     return GestureDetector(
       onTap: loading ? null : onTap,
@@ -420,7 +486,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
           color: AppColors.cardMid,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: status ? AppColors.alertGreen.withOpacity(0.5) : AppColors.cyanDark.withOpacity(0.5),
+            color: status
+                ? AppColors.alertGreen.withOpacity(0.5)
+                : AppColors.cyanDark.withOpacity(0.5),
           ),
         ),
         child: Column(
@@ -428,25 +496,42 @@ class _DashboardScreenState extends State<DashboardScreen> {
           children: [
             Text(icon, style: const TextStyle(fontSize: 24)),
             const SizedBox(height: 6),
-            Text(label, style: const TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w600, fontSize: 13)),
+            Text(label,
+                style: const TextStyle(
+                    color: AppColors.textPrimary,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13)),
             const SizedBox(height: 6),
             loading
-                ? const SizedBox(height: 20, width: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.cyan))
+                ? const SizedBox(
+                    height: 20,
+                    width: 20,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: AppColors.cyan))
                 : Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
-                      color: status ? AppColors.alertGreen : AppColors.cardDark,
+                      color: status
+                          ? AppColors.alertGreen
+                          : AppColors.cardDark,
                       borderRadius: BorderRadius.circular(20),
                     ),
-                    child: Text(status ? 'ON' : 'OFF',
-                        style: TextStyle(
-                          color: status ? Colors.white : AppColors.textSecondary,
-                          fontSize: 11, fontWeight: FontWeight.bold,
-                        )),
+                    child: Text(
+                      status ? 'ON' : 'OFF',
+                      style: TextStyle(
+                        color: status
+                            ? Colors.white
+                            : AppColors.textSecondary,
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                   ),
             const SizedBox(height: 6),
-            Text(subtitle, style: const TextStyle(color: AppColors.textSecondary, fontSize: 10)),
+            Text(subtitle,
+                style: const TextStyle(
+                    color: AppColors.textSecondary, fontSize: 10)),
           ],
         ),
       ),
